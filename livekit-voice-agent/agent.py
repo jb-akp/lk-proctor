@@ -11,7 +11,7 @@ from livekit.plugins import (
     noise_cancellation,
 )
 
-from functions import test_function, show_quiz, quiz_data_store
+from quiz import show_quiz, quiz_data_store
 
 load_dotenv(".env.local")
 
@@ -33,8 +33,8 @@ Here's how the quiz flow works:
 
 Be conversational and natural. If the user asks for a quiz, wants to practice math, or wants to test themselves, offer to show them a quiz. You can also proactively offer quizzes if appropriate.
 
-You have access to tools for testing function calls and showing quizzes.""",
-            tools=[test_function, show_quiz],
+You have access to tools for showing quizzes.""",
+            tools=[show_quiz],
         )
 
 server = AgentServer()
@@ -60,7 +60,7 @@ async def my_agent(ctx: agents.JobContext):
         ),
     )
 
-    # Register RPC method to receive quiz answers from the client (after session is started)
+    # Register RPC method to receive quiz answers from the client
     @ctx.room.local_participant.register_rpc_method("agent.submitQuizAnswer")
     async def handle_quiz_answer(data: RpcInvocationData) -> str:
         """Handle quiz answer submission from the client."""
@@ -87,10 +87,7 @@ async def my_agent(ctx: agents.JobContext):
             # Determine if answer is correct
             is_correct = user_answer_int == correct_answer
             
-            # Log for debugging
-            logging.info(f"Quiz answer check: user_answer={user_answer_int}, correct_answer={correct_answer}, is_correct={is_correct}")
-            
-            # Return response immediately (don't wait for voice feedback)
+            # Build response payload
             result_status = "correct" if is_correct else "incorrect"
             response_payload = {
                 "status": result_status,
@@ -99,16 +96,10 @@ async def my_agent(ctx: agents.JobContext):
             if not is_correct:
                 response_payload["correct_answer"] = correct_answer
             
-            # Log the response payload
-            logging.info(f"Returning response: {response_payload}")
-            
             # Clear quiz data before returning
             quiz_data_store.pop(room_name, None)
             
-            # Prepare the response to return FIRST
-            response_json = json.dumps(response_payload)
-            
-            # Fire off voice feedback asynchronously (don't wait for it, handle errors separately)
+            # Schedule voice feedback asynchronously (fire and forget)
             async def send_voice_feedback_async():
                 try:
                     if is_correct:
@@ -119,17 +110,15 @@ async def my_agent(ctx: agents.JobContext):
                         await session.generate_reply(
                             instructions=f"Speak in English. The user answered {user_answer_int}, but the correct answer is {correct_answer} for the question '{question}'. Politely let them know they got it wrong and what the correct answer is."
                         )
-                except Exception as feedback_error:
-                    logging.error(f"Error sending voice feedback (non-critical): {feedback_error}")
+                except Exception as e:
+                    logging.error(f"Error sending voice feedback (non-critical): {e}")
             
-            # Schedule the async voice feedback task (fire and forget)
             try:
                 asyncio.create_task(send_voice_feedback_async())
-            except Exception as task_error:
-                logging.error(f"Error scheduling voice feedback task (non-critical): {task_error}")
+            except Exception as e:
+                logging.error(f"Error scheduling voice feedback task (non-critical): {e}")
             
-            # Return the response immediately
-            return response_json
+            return json.dumps(response_payload)
                 
         except Exception as e:
             logging.error(f"Error handling quiz answer: {e}")

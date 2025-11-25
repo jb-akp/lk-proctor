@@ -9,25 +9,6 @@ quiz_data_store: dict[str, dict] = {}
 
 
 @function_tool()
-async def test_function(
-    context: RunContext,
-    message: str,
-) -> str:
-    """A test function to verify that tool calling works.
-    
-    This is a simple stub function that echoes back the message you provide.
-    Use this to test that the agent can successfully call functions.
-    
-    Args:
-        message: A message to echo back as confirmation that the function was called.
-    
-    Returns:
-        A confirmation message indicating the function was executed.
-    """
-    return f"Function called successfully! You said: {message}"
-
-
-@function_tool()
 async def show_quiz(
     context: RunContext,
 ) -> str:
@@ -89,3 +70,4 @@ async def show_quiz(
     except Exception as e:
         logging.error(f"Error showing quiz: {e}")
         raise ToolError(f"Unable to show quiz: {str(e)}")
+

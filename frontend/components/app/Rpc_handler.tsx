@@ -146,11 +146,7 @@ export function RpcHandlers() {
 
               // Parse the response to determine if answer was correct
               const result = typeof response === "string" ? JSON.parse(response) : response;
-              console.log("Quiz answer response:", JSON.stringify(result, null, 2));
-              console.log("Result status:", result?.status);
-              console.log("Status type:", typeof result?.status);
               const isCorrect = result?.status === "correct";
-              console.log("Is correct?", isCorrect);
 
               // Show immediate visual feedback
               showFeedbackPopup(isCorrect, overlay);

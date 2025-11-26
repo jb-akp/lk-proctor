@@ -17,8 +17,10 @@ export function RpcHandlers() {
 
         const payload = typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload;
         const quizType = payload?.type;
+        const questionNumber = payload?.question_number || 1;
+        const totalQuestions = payload?.total_questions || 4;
 
-        if (quizType !== "addition_quiz") {
+        if (quizType !== "addition_quiz" && quizType !== "math_quiz") {
           return "Error: Unknown quiz type";
         }
 
@@ -83,6 +85,9 @@ export function RpcHandlers() {
         // Create quiz content
         const quizContent = document.createElement("div");
         quizContent.innerHTML = `
+          <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #6b7280; text-align: center;">
+            Question ${questionNumber} of ${totalQuestions}
+          </h2>
           <h2 style="margin: 0 0 16px 0; font-size: 24px; font-weight: 600; color: #1f2937; text-align: center;">
             Math Quiz
           </h2>
@@ -151,10 +156,10 @@ export function RpcHandlers() {
               // Show immediate visual feedback
               showFeedbackPopup(isCorrect, overlay);
 
-              // Close quiz after showing feedback
+              // Close quiz after showing feedback - extended time to see the feedback
               setTimeout(() => {
                 closeQuiz();
-              }, 1500); // Show feedback for 1.5 seconds
+              }, 3000); // Show feedback for 3 seconds
             } catch (error) {
               console.error("Error submitting quiz answer:", error);
               // Re-enable buttons on error
@@ -261,10 +266,127 @@ export function RpcHandlers() {
       }
     };
 
+    const handleShowScore = async (data: any): Promise<string> => {
+      try {
+        if (!data || data.payload === undefined) {
+          return "Error: Invalid RPC data format";
+        }
+
+        const payload = typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload;
+        const score = payload?.score || 0;
+        const total = payload?.total || 4;
+        const percentage = payload?.percentage || 0;
+
+        // Create score popup
+        const overlay = document.createElement("div");
+        overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+
+        const scorePopup = document.createElement("div");
+        scorePopup.style.cssText = `
+          background: white;
+          border-radius: 16px;
+          padding: 48px;
+          max-width: 500px;
+          width: 90%;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+          text-align: center;
+        `;
+
+        // Determine color based on score
+        const color = percentage >= 75 ? "#10b981" : percentage >= 50 ? "#f59e0b" : "#ef4444";
+        const emoji = percentage === 100 ? "🎉" : percentage >= 75 ? "👍" : percentage >= 50 ? "😊" : "💪";
+
+        scorePopup.innerHTML = `
+          <div style="font-size: 64px; margin-bottom: 16px;">${emoji}</div>
+          <h2 style="margin: 0 0 16px 0; font-size: 32px; font-weight: 700; color: #1f2937;">
+            Quiz Complete!
+          </h2>
+          <div style="font-size: 72px; font-weight: 800; color: ${color}; margin: 24px 0;">
+            ${score}/${total}
+          </div>
+          <div style="font-size: 24px; color: #6b7280; margin-bottom: 32px; font-weight: 600;">
+            ${percentage}%
+          </div>
+          <button 
+            id="close-score-btn"
+            style="
+              padding: 12px 32px;
+              background: ${color};
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 18px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            "
+            onmouseover="this.style.opacity='0.9'; this.style.transform='scale(1.05)'"
+            onmouseout="this.style.opacity='1'; this.style.transform='scale(1)'"
+          >
+            Close
+          </button>
+        `;
+
+        overlay.appendChild(scorePopup);
+        document.body.appendChild(overlay);
+
+        // Add CSS animations if not already present
+        if (!document.getElementById("quiz-animations")) {
+          const style = document.createElement("style");
+          style.id = "quiz-animations";
+          style.textContent = `
+            @keyframes scaleIn {
+              0% { transform: scale(0); opacity: 0; }
+              50% { transform: scale(1.1); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `;
+          document.head.appendChild(style);
+        }
+
+        // Close button handler
+        const closeBtn = scorePopup.querySelector("#close-score-btn") as HTMLButtonElement;
+        const closeScore = () => {
+          overlay.style.animation = "scaleIn 0.3s ease-out reverse";
+          setTimeout(() => {
+            if (overlay.parentNode) {
+              overlay.parentNode.removeChild(overlay);
+            }
+          }, 300);
+        };
+
+        closeBtn.addEventListener("click", closeScore);
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) {
+            closeScore();
+          }
+        });
+
+        return "Score displayed";
+      } catch (err) {
+        return "Error: " + (err instanceof Error ? err.message : String(err));
+      }
+    };
+
     room.localParticipant.registerRpcMethod("client.showQuiz", handleShowQuiz);
+    room.localParticipant.registerRpcMethod("client.showScore", handleShowScore);
 
     return () => {
       room.localParticipant.unregisterRpcMethod("client.showQuiz");
+      room.localParticipant.unregisterRpcMethod("client.showScore");
     };
   }, [room]);
 

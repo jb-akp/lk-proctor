@@ -92,7 +92,7 @@ export function RpcHandlers() {
             Trivia Quiz
           </h2>
           <p style="margin: 0 0 32px 0; font-size: 36px; color: #1f2937; text-align: center; font-weight: 600;">
-            ${question} = ?
+            ${question}
           </p>
           <div id="quiz-options" style="display: grid; gap: 12px; margin-bottom: 16px;"></div>
         `;

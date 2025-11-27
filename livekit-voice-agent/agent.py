@@ -47,7 +47,7 @@ class Assistant(Agent):
             self._latest_frame = event.frame
 
     async def _monitor_for_phone(self):
-        while self.quiz_state["active"]:
+        while True:
             await asyncio.sleep(3.0)
             if not self._latest_frame:
                 continue
@@ -59,10 +59,9 @@ class Assistant(Agent):
                 full_text = ""
                 async for chunk in self._llm.chat(chat_ctx=chat_ctx):
                     full_text += str(chunk)
-                full_text = full_text.split("ID=")[0].strip().upper()
                 
-                if "PHONE_DETECTED" in full_text or "PHONE" in full_text:
-                    await self._session.say("I notice you have your phone out. Please put it away so we can continue the quiz fairly. Thank you!")
+                if "PHONE_DETECTED" in full_text.upper() or "PHONE" in full_text.upper():
+                    await self._session.say("I notice you have your phone out. Please put it away so we can continue the quiz fairly. Thank you!", allow_interruptions=False, add_to_chat_ctx=False)
             except Exception:
                 pass
 
@@ -131,13 +130,13 @@ class Assistant(Agent):
             await asyncio.sleep(1.5)
             percentage = int((score / total) * 100)
             if score == total:
-                await self._session.say(f"Congratulations! You got a perfect score - {score} out of {total}! Excellent work!")
+                await self._session.say(f"Congratulations! You got a perfect score - {score} out of {total}! Excellent work!", allow_interruptions=False, add_to_chat_ctx=True)
             elif percentage >= 75:
-                await self._session.say(f"Great job! You scored {score} out of {total}, that's {percentage} percent. Well done!")
+                await self._session.say(f"Great job! You scored {score} out of {total}, that's {percentage} percent. Well done!", allow_interruptions=False, add_to_chat_ctx=True)
             elif percentage >= 50:
-                await self._session.say(f"Good effort! You scored {score} out of {total}, that's {percentage} percent. Keep practicing!")
+                await self._session.say(f"Good effort! You scored {score} out of {total}, that's {percentage} percent. Keep practicing!", allow_interruptions=False, add_to_chat_ctx=True)
             else:
-                await self._session.say(f"You scored {score} out of {total}, that's {percentage} percent. Keep practicing and you'll improve!")
+                await self._session.say(f"You scored {score} out of {total}, that's {percentage} percent. Keep practicing and you'll improve!", allow_interruptions=False, add_to_chat_ctx=True)
         asyncio.create_task(send_feedback())
         return json.dumps({"status": "complete", "score": score, "total": total})
 

@@ -1,8 +1,6 @@
 from dotenv import load_dotenv
 import json
 import asyncio
-import random
-import logging
 
 from livekit import agents, rtc
 from livekit.agents import AgentServer, AgentSession, Agent, room_io, get_job_context
@@ -12,14 +10,14 @@ from livekit.plugins import noise_cancellation, silero, openai
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 # We can remove the 'quiz' import if we define the logic locally or keep it simple
-from quiz import show_quiz, quiz_data_store 
+from quiz import show_quiz, quiz_data_store, generate_options 
 
 load_dotenv(".env.local")
 
 class Assistant(Agent):
     def __init__(self, session: AgentSession, llm_instance: openai.LLM) -> None:
         super().__init__(
-            instructions="""You are a friendly math quiz voice assistant. Speak in English.
+            instructions="""You are a friendly trivia quiz voice assistant. Speak in English.
             QUIZ BEHAVIOR: Speak only at start and end. Stay silent during questions.""",
             tools=[show_quiz], 
         )
@@ -27,12 +25,11 @@ class Assistant(Agent):
         self._llm = llm_instance
         self._latest_frame = None
         self._video_stream = None
+        self._phone_monitoring_task = None
         
-        # SIMPLIFICATION 1: Store Quiz State Locally (No Global Dict needed)
         self.quiz_state = {
             "active": False,
-            "ready": True, # Assuming ready by default for simplicity
-            "questions": [], # You would populate this from your quiz source
+            "questions": [],
             "current_index": 0,
             "answers": []
         }
@@ -41,25 +38,22 @@ class Assistant(Agent):
         self._room = get_job_context().room
         @self._room.on("track_subscribed")
         def on_track_subscribed(track, publication, participant):
-            if track.kind == rtc.TrackKind.KIND_VIDEO and self._video_stream is None:
+            if track.kind == rtc.TrackKind.KIND_VIDEO:
                 self._video_stream = rtc.VideoStream(track)
                 asyncio.create_task(self._read_stream())
-        asyncio.create_task(self._monitor_for_phone())
 
     async def _read_stream(self):
         async for event in self._video_stream:
             self._latest_frame = event.frame
 
     async def _monitor_for_phone(self):
-        while True:
+        while self.quiz_state["active"]:
             await asyncio.sleep(3.0)
-            # SIMPLIFICATION 3: Check local state instead of global lookup
-            if not self.quiz_state["active"] or not self._latest_frame:
+            if not self._latest_frame:
                 continue
-
             try:
                 chat_ctx = ChatContext()
-                chat_ctx.add_message(role="system", content="You are a proctor. Look at this image and determine if there is a smartphone, mobile phone, or phone visible. The person might be holding it, looking at it, or it might be on a desk nearby. Respond ONLY with 'PHONE_DETECTED' or 'CLEAR' - nothing else.")
+                chat_ctx.add_message(role="system", content="You are a proctor. Look at this image and determine if there is a smartphone, mobile phone, or phone visible. The person might be holding it. Respond ONLY with 'PHONE_DETECTED' or 'CLEAR' - nothing else.")
                 chat_ctx.add_message(role="user", content=[ImageContent(image=self._latest_frame, inference_width=512, inference_height=512)])
                 
                 full_text = ""
@@ -74,23 +68,16 @@ class Assistant(Agent):
 
     # --- SIMPLIFIED QUIZ LOGIC ---
 
-    def _generate_options(self, answer: int) -> list[int]:
-        # Cleaner logic: create a range, exclude answer, pick 3, add answer, shuffle
-        options = random.sample([x for x in range(answer-5, answer+6) if x != answer and x > 0], 3)
-        options.append(answer)
-        random.shuffle(options)
-        return options
-
     async def _send_question(self, index):
+        room = get_job_context().room
         q = self.quiz_state["questions"][index]
-        participant_identity = next(iter(self._room.remote_participants))
-        await self._room.local_participant.perform_rpc(
-            destination_identity=participant_identity,
+        await room.local_participant.perform_rpc(
+            destination_identity=next(iter(room.remote_participants)),
             method="client.showQuiz",
             payload=json.dumps({
-                "type": "math_quiz",
+                "type": "trivia_quiz",
                 "question": q["question"],
-                "options": self._generate_options(q["correct_answer"]),
+                "options": generate_options(q["correct_answer"]),
                 "question_number": index + 1,
                 "total_questions": len(self.quiz_state["questions"]),
             }),
@@ -100,29 +87,21 @@ class Assistant(Agent):
     # --- RPC HANDLERS (Now Class Methods) ---
 
     async def handle_start_quiz(self, data: RpcInvocationData) -> str:
-        if self.quiz_state["active"]:
-            return json.dumps({"error": "Already active"})
-        quiz_data = quiz_data_store.get(self._room.name)
-        if not quiz_data or not quiz_data.get('quiz_ready'):
-            return json.dumps({"error": "Quiz not ready"})
-        self.quiz_state["questions"] = quiz_data.get('questions', [])
-        if not self.quiz_state["questions"]:
-            return json.dumps({"error": "No questions found"})
+        room = get_job_context().room
+        quiz_data = quiz_data_store[room.name]
+        self.quiz_state["questions"] = quiz_data["questions"]
         self.quiz_state["active"] = True
         self.quiz_state["current_index"] = 0
+        self.quiz_state["answers"] = []
+        self._phone_monitoring_task = asyncio.create_task(self._monitor_for_phone())
         await self._send_question(0)
         return json.dumps({"status": "started"})
 
     async def handle_submit_answer(self, data: RpcInvocationData) -> str:
-        if not self.quiz_state["active"]:
-            return json.dumps({"error": "No active quiz found"})
         payload = json.loads(data.payload)
-        user_ans = int(payload.get("answer")) if isinstance(payload.get("answer"), (int, str)) else None
         idx = self.quiz_state["current_index"]
-        if idx >= len(self.quiz_state["questions"]):
-            return json.dumps({"error": "Quiz already completed"})
         q = self.quiz_state["questions"][idx]
-        is_correct = user_ans == q["correct_answer"]
+        is_correct = str(payload.get("answer")) == str(q["correct_answer"])
         self.quiz_state["answers"].append(is_correct)
         self.quiz_state["current_index"] = idx + 1
         if idx + 1 >= len(self.quiz_state["questions"]):
@@ -138,9 +117,12 @@ class Assistant(Agent):
         score = sum(self.quiz_state["answers"])
         total = len(self.quiz_state["questions"])
         self.quiz_state["active"] = False
-        participant_identity = next(iter(self._room.remote_participants))
-        await self._room.local_participant.perform_rpc(
-            destination_identity=participant_identity,
+        if self._phone_monitoring_task:
+            self._phone_monitoring_task.cancel()
+            self._phone_monitoring_task = None
+        room = get_job_context().room
+        await room.local_participant.perform_rpc(
+            destination_identity=next(iter(room.remote_participants)),
             method="client.showScore",
             payload=json.dumps({"score": score, "total": total, "percentage": int((score / total) * 100)}),
             response_timeout=5.0
@@ -159,8 +141,6 @@ class Assistant(Agent):
         asyncio.create_task(send_feedback())
         return json.dumps({"status": "complete", "score": score, "total": total})
 
-
-
 # --- MAIN ENTRY POINT ---
 
 server = AgentServer()
@@ -175,9 +155,7 @@ async def my_agent(ctx: agents.JobContext):
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
-    vision_llm = openai.LLM(model="gpt-4o-mini") # Vision Brain
-
-    # 2. Initialize Agent (Logic is now inside the class)
+    vision_llm = openai.LLM(model="gpt-4o-mini")
     assistant = Assistant(session, vision_llm)
 
     await session.start(
@@ -199,7 +177,9 @@ async def my_agent(ctx: agents.JobContext):
     async def handle_submit_answer(data: RpcInvocationData) -> str:
         return await assistant.handle_submit_answer(data)
     
-    await session.generate_reply(instructions="Greet warmly in English. Sound like a friendly teacher excited to help with math. Say something like 'Hey there! Ready to test your math skills? I've got a quick quiz with 4 questions whenever you're ready.'")
+    await session.generate_reply(
+        instructions="Greet warmly in English. Sound like a friendly teacher. Say something like 'Hey there! Ready for a quick trivia quiz? I've got 4 questions for you whenever you're ready.'"
+        )
 
 if __name__ == "__main__":
     agents.cli.run_app(server)

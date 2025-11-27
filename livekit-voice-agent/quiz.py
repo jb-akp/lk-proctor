@@ -4,47 +4,44 @@ from livekit.agents import function_tool, RunContext, get_job_context
 
 quiz_data_store: dict[str, dict] = {}
 
+TRIVIA_QUESTIONS = [
+    {"question": "What is the capital of France?", "correct_answer": "Paris"},
+    {"question": "How many continents are there?", "correct_answer": "7"},
+    {"question": "What is the largest planet in our solar system?", "correct_answer": "Jupiter"},
+    {"question": "In what year did World War II end?", "correct_answer": "1945"},
+]
 
-def generate_question(operation: str) -> tuple[str, int]:
-    if operation == "addition":
-        n1, n2 = random.randint(1, 20), random.randint(1, 20)
-        return f"{n1} + {n2}", n1 + n2
-    elif operation == "subtraction":
-        n1 = random.randint(10, 30)
-        n2 = random.randint(1, n1)
-        return f"{n1} - {n2}", n1 - n2
-    elif operation == "multiplication":
-        n1, n2 = random.randint(2, 10), random.randint(2, 10)
-        return f"{n1} × {n2}", n1 * n2
-    elif operation == "division":
-        d, q = random.randint(2, 10), random.randint(2, 10)
-        return f"{d * q} ÷ {d}", q
-    raise ValueError(f"Unknown operation: {operation}")
+WRONG_OPTIONS = {
+    "Paris": ["London", "Berlin", "Madrid"],
+    "7": ["5", "6", "8"],
+    "Jupiter": ["Saturn", "Neptune", "Earth"],
+    "1945": ["1944", "1946", "1943"]
+}
+
+def generate_options(correct_answer: str) -> list[str]:
+    options = WRONG_OPTIONS.get(correct_answer, ["Option A", "Option B", "Option C"]).copy()
+    options.append(correct_answer)
+    random.shuffle(options)
+    return options
 
 
 @function_tool()
 async def show_quiz(context: RunContext) -> str:
-    """Start a 4-question math quiz with random operations."""
+    """Start a 4-question trivia quiz."""
     room = get_job_context().room
-    operations = ["addition", "subtraction", "multiplication", "division"]
-    questions = []
-    for _ in range(4):
-        q, a = generate_question(random.choice(operations))
-        questions.append({"question": q, "correct_answer": a})
-    
     quiz_data_store[room.name] = {
-        "questions": questions,
+        "questions": TRIVIA_QUESTIONS,
         "current_question_index": 0,
         "answers": [],
         "quiz_active": False,
         "quiz_ready": True,
-        "total_questions": 4
+        "total_questions": len(TRIVIA_QUESTIONS)
     }
     
     await room.local_participant.perform_rpc(
         destination_identity=next(iter(room.remote_participants)),
         method="client.showStartQuiz",
-        payload=json.dumps({"total_questions": 4}),
+        payload=json.dumps({"total_questions": len(TRIVIA_QUESTIONS)}),
         response_timeout=5.0
     )
     return "Quiz prepared. Waiting for user to start."

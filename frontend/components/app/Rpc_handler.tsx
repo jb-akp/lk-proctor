@@ -20,7 +20,7 @@ export function RpcHandlers() {
         const questionNumber = payload?.question_number || 1;
         const totalQuestions = payload?.total_questions || 4;
 
-        if (quizType !== "addition_quiz" && quizType !== "math_quiz") {
+        if (quizType !== "trivia_quiz") {
           return "Error: Unknown quiz type";
         }
 
@@ -89,7 +89,7 @@ export function RpcHandlers() {
             Question ${questionNumber} of ${totalQuestions}
           </h2>
           <h2 style="margin: 0 0 16px 0; font-size: 24px; font-weight: 600; color: #1f2937; text-align: center;">
-            Math Quiz
+            Trivia Quiz
           </h2>
           <p style="margin: 0 0 32px 0; font-size: 36px; color: #1f2937; text-align: center; font-weight: 600;">
             ${question} = ?
@@ -99,7 +99,7 @@ export function RpcHandlers() {
 
         // Create answer buttons
         const optionsContainer = quizContent.querySelector("#quiz-options") as HTMLDivElement;
-        options.forEach((option: number, index: number) => {
+        options.forEach((option: number | string, index: number) => {
           const button = document.createElement("button");
           button.textContent = String(option);
           button.style.cssText = `
@@ -323,7 +323,7 @@ export function RpcHandlers() {
             Ready to Start?
           </h2>
           <p style="margin: 0 0 32px 0; font-size: 16px; color: #6b7280;">
-            You'll have ${totalQuestions} questions covering addition, subtraction, multiplication, and division.
+            You'll have ${totalQuestions} trivia questions to test your knowledge.
           </p>
           <button 
             id="start-quiz-btn"

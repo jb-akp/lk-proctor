@@ -6,7 +6,7 @@ from livekit import agents, rtc
 from livekit.agents import AgentServer, AgentSession, Agent, room_io, get_job_context
 from livekit.agents.llm import ChatContext, ImageContent
 from livekit.rtc.rpc import RpcInvocationData
-from livekit.plugins import noise_cancellation, silero, openai
+from livekit.plugins import noise_cancellation, silero, openai, anam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 # We can remove the 'quiz' import if we define the logic locally or keep it simple
@@ -156,6 +156,15 @@ async def my_agent(ctx: agents.JobContext):
     )
     vision_llm = openai.LLM(model="gpt-4o-mini")
     assistant = Assistant(session, vision_llm)
+
+    # Start ANAM avatar
+    avatar = anam.AvatarSession(
+        persona_config=anam.PersonaConfig(
+            name="Trivia Assistant",  # Name of the avatar
+            avatarId="30fa96d0-26c4-4e55-94a0-517025942e18",  
+        ),
+    )
+    await avatar.start(session, room=ctx.room)
 
     await session.start(
         room=ctx.room,

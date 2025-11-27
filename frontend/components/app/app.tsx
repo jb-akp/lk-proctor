@@ -4,7 +4,7 @@ import { RoomAudioRenderer, StartAudio } from '@livekit/components-react';
 import type { AppConfig } from '@/app-config';
 import { ViewController } from '@/components/app/view-controller';
 import { Toaster } from '@/components/livekit/toaster';
-import { RpcHandlers } from '@/components/app/Rpc_handler';
+import { RpcHandlers } from '@/components/app/quiz-rpc-handlers';
 import { useAgentErrors } from '@/hooks/useAgentErrors';
 import { ConnectionProvider } from '@/hooks/useConnection';
 import { useDebugMode } from '@/hooks/useDebug';

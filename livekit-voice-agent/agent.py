@@ -71,8 +71,8 @@ class Assistant(Agent):
                     )
                     # Speak the warning
                     await self._session.say("I notice you have your phone out. Please put it away so we can continue the quiz fairly. Thank you!", allow_interruptions=False, add_to_chat_ctx=False)
-                    # Wait for speech to finish (estimate ~3.5 seconds for the message)
-                    await asyncio.sleep(3.5)
+                    # Wait for speech to finish (estimate ~2.5 seconds for the message)
+                    await asyncio.sleep(2.5)
                     # Show quiz modal again
                     await room.local_participant.perform_rpc(
                         destination_identity=next(iter(room.remote_participants)),

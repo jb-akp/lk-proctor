@@ -156,10 +156,10 @@ export function RpcHandlers() {
               // Show immediate visual feedback
               showFeedbackPopup(isCorrect, overlay);
 
-              // Close quiz after showing feedback - extended time to see the feedback
+              // Close quiz after showing feedback
               setTimeout(() => {
                 closeQuiz();
-              }, 3000); // Show feedback for 3 seconds
+              }, 2000); // Show feedback for 2 seconds
             } catch (error) {
               console.error("Error submitting quiz answer:", error);
               // Re-enable buttons on error
@@ -261,6 +261,136 @@ export function RpcHandlers() {
         };
 
         return "Quiz displayed";
+      } catch (err) {
+        return "Error: " + (err instanceof Error ? err.message : String(err));
+      }
+    };
+
+    const handleShowStartQuiz = async (data: any): Promise<string> => {
+      try {
+        if (!data || data.payload === undefined) {
+          return "Error: Invalid RPC data format";
+        }
+
+        const payload = typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload;
+        const totalQuestions = payload?.total_questions || 4;
+
+        // Create start quiz popup
+        const overlay = document.createElement("div");
+        overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+
+        const startPopup = document.createElement("div");
+        startPopup.style.cssText = `
+          background: white;
+          border-radius: 16px;
+          padding: 48px;
+          max-width: 400px;
+          width: 90%;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+          text-align: center;
+        `;
+
+        // Add CSS animations if not already present
+        if (!document.getElementById("quiz-animations")) {
+          const style = document.createElement("style");
+          style.id = "quiz-animations";
+          style.textContent = `
+            @keyframes scaleIn {
+              0% { transform: scale(0); opacity: 0; }
+              50% { transform: scale(1.1); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `;
+          document.head.appendChild(style);
+        }
+
+        startPopup.innerHTML = `
+          <div style="font-size: 64px; margin-bottom: 16px;">📝</div>
+          <h2 style="margin: 0 0 8px 0; font-size: 28px; font-weight: 700; color: #1f2937;">
+            Ready to Start?
+          </h2>
+          <p style="margin: 0 0 32px 0; font-size: 16px; color: #6b7280;">
+            You'll have ${totalQuestions} questions covering addition, subtraction, multiplication, and division.
+          </p>
+          <button 
+            id="start-quiz-btn"
+            style="
+              padding: 14px 40px;
+              background: #3b82f6;
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 18px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+              box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+            "
+            onmouseover="this.style.background='#2563eb'; this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 16px rgba(59, 130, 246, 0.5)'"
+            onmouseout="this.style.background='#3b82f6'; this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(59, 130, 246, 0.4)'"
+          >
+            Start Quiz
+          </button>
+        `;
+
+        overlay.appendChild(startPopup);
+        document.body.appendChild(overlay);
+
+        // Start button handler
+        const startBtn = startPopup.querySelector("#start-quiz-btn") as HTMLButtonElement;
+        const startQuiz = async () => {
+          try {
+            startBtn.disabled = true;
+            startBtn.textContent = "Starting...";
+            startBtn.style.opacity = "0.7";
+            startBtn.style.cursor = "not-allowed";
+
+            // Send RPC to agent to start the quiz
+            const remoteParticipants = Array.from(room.remoteParticipants.values());
+            const agentParticipant = remoteParticipants[0];
+
+            if (!agentParticipant) {
+              throw new Error("Agent participant not found");
+            }
+
+            await room.localParticipant.performRpc({
+              destinationIdentity: agentParticipant.identity,
+              method: "agent.startQuiz",
+              payload: JSON.stringify({}),
+            });
+
+            // Close the start popup
+            overlay.style.animation = "scaleIn 0.3s ease-out reverse";
+            setTimeout(() => {
+              if (overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+              }
+            }, 300);
+          } catch (error) {
+            console.error("Error starting quiz:", error);
+            startBtn.disabled = false;
+            startBtn.textContent = "Start Quiz";
+            startBtn.style.opacity = "1";
+            startBtn.style.cursor = "pointer";
+          }
+        };
+
+        startBtn.addEventListener("click", startQuiz);
+
+        return "Start quiz popup displayed";
       } catch (err) {
         return "Error: " + (err instanceof Error ? err.message : String(err));
       }
@@ -382,10 +512,12 @@ export function RpcHandlers() {
     };
 
     room.localParticipant.registerRpcMethod("client.showQuiz", handleShowQuiz);
+    room.localParticipant.registerRpcMethod("client.showStartQuiz", handleShowStartQuiz);
     room.localParticipant.registerRpcMethod("client.showScore", handleShowScore);
 
     return () => {
       room.localParticipant.unregisterRpcMethod("client.showQuiz");
+      room.localParticipant.unregisterRpcMethod("client.showStartQuiz");
       room.localParticipant.unregisterRpcMethod("client.showScore");
     };
   }, [room]);

@@ -61,7 +61,25 @@ class Assistant(Agent):
                     full_text += str(chunk)
                 
                 if "PHONE_DETECTED" in full_text.upper() or "PHONE" in full_text.upper():
+                    room = get_job_context().room
+                    # Hide quiz modal
+                    await room.local_participant.perform_rpc(
+                        destination_identity=next(iter(room.remote_participants)),
+                        method="client.hideQuiz",
+                        payload="{}",
+                        response_timeout=5.0
+                    )
+                    # Speak the warning
                     await self._session.say("I notice you have your phone out. Please put it away so we can continue the quiz fairly. Thank you!", allow_interruptions=False, add_to_chat_ctx=False)
+                    # Wait for speech to finish (estimate ~3.5 seconds for the message)
+                    await asyncio.sleep(3.5)
+                    # Show quiz modal again
+                    await room.local_participant.perform_rpc(
+                        destination_identity=next(iter(room.remote_participants)),
+                        method="client.showQuizModal",
+                        payload="{}",
+                        response_timeout=5.0
+                    )
             except Exception:
                 pass
 

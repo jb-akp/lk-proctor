@@ -33,6 +33,7 @@ export function RpcHandlers() {
 
         // Create quiz popup
         const overlay = document.createElement("div");
+        overlay.setAttribute("data-quiz-overlay", "true");
         overlay.style.cssText = `
           position: fixed;
           top: 0;
@@ -511,14 +512,34 @@ export function RpcHandlers() {
       }
     };
 
+    const handleHideQuiz = async (): Promise<string> => {
+      const overlay = document.querySelector('[data-quiz-overlay="true"]') as HTMLElement;
+      if (overlay) {
+        overlay.style.display = "none";
+      }
+      return "Quiz hidden";
+    };
+
+    const handleShowQuizModal = async (): Promise<string> => {
+      const overlay = document.querySelector('[data-quiz-overlay="true"]') as HTMLElement;
+      if (overlay) {
+        overlay.style.display = "flex";
+      }
+      return "Quiz shown";
+    };
+
     room.localParticipant.registerRpcMethod("client.showQuiz", handleShowQuiz);
     room.localParticipant.registerRpcMethod("client.showStartQuiz", handleShowStartQuiz);
     room.localParticipant.registerRpcMethod("client.showScore", handleShowScore);
+    room.localParticipant.registerRpcMethod("client.hideQuiz", handleHideQuiz);
+    room.localParticipant.registerRpcMethod("client.showQuizModal", handleShowQuizModal);
 
     return () => {
       room.localParticipant.unregisterRpcMethod("client.showQuiz");
       room.localParticipant.unregisterRpcMethod("client.showStartQuiz");
       room.localParticipant.unregisterRpcMethod("client.showScore");
+      room.localParticipant.unregisterRpcMethod("client.hideQuiz");
+      room.localParticipant.unregisterRpcMethod("client.showQuizModal");
     };
   }, [room]);
 

@@ -144,29 +144,6 @@ export function RpcHandlers() {
           linkButton.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
         });
 
-        // When link is clicked, start monitoring and close popup
-        linkButton.addEventListener("click", async () => {
-          try {
-            // Notify backend to start phone monitoring
-            const remoteParticipants = Array.from(room.remoteParticipants.values());
-            const agentParticipant = remoteParticipants.find(p => p.isAgent);
-            if (agentParticipant) {
-              await room.localParticipant.performRpc({
-                destinationIdentity: agentParticipant.identity,
-                method: "backend.startMonitoring",
-                payload: JSON.stringify({}),
-              });
-            }
-          } catch (error) {
-            console.error("Error starting monitoring:", error);
-          }
-          
-          // Close popup after a brief delay to allow link to open
-          setTimeout(() => {
-            closeButton.click();
-          }, 100);
-        });
-
         // Close button
         const closeButton = document.createElement("button");
         closeButton.innerHTML = "×";
@@ -197,14 +174,15 @@ export function RpcHandlers() {
           closeButton.style.background = "rgba(255, 255, 255, 0.2)";
           closeButton.style.transform = "rotate(0deg)";
         });
-        closeButton.addEventListener("click", () => {
-          overlay.style.animation = "fadeIn 0.3s ease-out reverse";
-          setTimeout(() => {
-            if (overlay.parentNode) {
-              overlay.parentNode.removeChild(overlay);
-            }
-          }, 300);
-        });
+        
+        // Close popup function
+        const closePopup = () => {
+          overlay.remove();
+        };
+        closeButton.addEventListener("click", closePopup);
+        
+        // When link is clicked, close popup
+        linkButton.addEventListener("click", closePopup);
 
         // Assemble popup
         content.appendChild(icon);
@@ -218,7 +196,7 @@ export function RpcHandlers() {
         // Close on overlay click (but not on popup click)
         overlay.addEventListener("click", (e) => {
           if (e.target === overlay) {
-            closeButton.click();
+            closePopup();
           }
         });
 
@@ -232,30 +210,22 @@ export function RpcHandlers() {
     };
 
     // Register RPC method
-    const registerMethod = () => {
-      try {
-        room.localParticipant.registerRpcMethod("frontend.showQuizLink", async (data) => await handleShowQuizLink(data));
-        console.log("RPC method 'frontend.showQuizLink' registered successfully");
-      } catch (error) {
-        console.error("Error registering RPC method:", error);
-      }
-    };
-
-    // Register immediately and also after a short delay to ensure room is ready
-    registerMethod();
-    const timeoutId = setTimeout(registerMethod, 1000);
+    room.localParticipant.registerRpcMethod("frontend.showQuizLink", async (data) => await handleShowQuizLink(data));
 
     return () => {
-      clearTimeout(timeoutId);
       try {
         room.localParticipant.unregisterRpcMethod("frontend.showQuizLink");
       } catch (error) {
-        console.error("Error unregistering RPC method:", error);
+        // Ignore errors during cleanup
       }
-      // Clean up any existing popups
+      // Clean up any existing popups and styles
       const existing = document.querySelector('[data-quiz-link-popup="true"]');
       if (existing) {
         existing.remove();
+      }
+      const styleElement = document.head.querySelector('style[data-quiz-link-styles]');
+      if (styleElement) {
+        styleElement.remove();
       }
     };
   }, [room]);

@@ -11,40 +11,6 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 load_dotenv(".env.local")
 
-def _get_user_identity(room) -> str:
-    """Get the user participant identity, filtering out avatars."""
-    for identity in room.remote_participants:
-        if identity.startswith("voice_assistant_user_"):
-            return identity
-    return next(iter(room.remote_participants), None)
-
-# --- QUIZ LINK TOOL ---
-@function_tool()
-async def show_quiz_link(context: RunContext) -> str:
-    """Call this when the user says they are ready to take the quiz. This will display a popup with a link to the quiz website."""
-    room = get_job_context().room
-    user_identity = _get_user_identity(room)
-    
-    if not user_identity:
-        return "Error: Could not find user participant. Please ensure you are connected."
-    
-    try:
-        # Include room name in URL so quiz-frontend can join the same room
-        room_name = room.name
-        quiz_url = f"http://localhost:3001?room={room_name}"
-        
-        await room.local_participant.perform_rpc(
-            destination_identity=user_identity,
-            method="frontend.showQuizLink",
-            payload=json.dumps({"quizUrl": quiz_url, "roomName": room_name}),
-            response_timeout=5.0
-        )
-        return "Quiz link popup displayed. Now wish the user good luck with a brief, encouraging message."
-    except Exception as e:
-        # If RPC fails, return error message that the LLM can communicate
-        error_msg = f"Unable to display quiz link popup. Please refresh the page and try again. Error: {str(e)}"
-        return error_msg
-
 class ProctorAgent(Agent):
     def __init__(self, session: AgentSession, llm_instance: openai.LLM) -> None:
         super().__init__(
@@ -54,7 +20,6 @@ class ProctorAgent(Agent):
 3. After the quiz link is shown, wish them good luck with a brief, encouraging message like "Good luck! Take your time and do your best."
 4. Once you've wished them luck, remain SILENT and observe. Do not speak during the quiz.
 5. Act professionally and maintain a quiet, focused environment.""",
-            tools=[show_quiz_link],
         )
         self._session = session
         self._llm = llm_instance
@@ -62,6 +27,41 @@ class ProctorAgent(Agent):
         self._video_stream = None
         self._phone_monitoring_task = None
         self.is_proctoring = False
+
+    # --- QUIZ LINK TOOL ---
+    @function_tool()
+    async def show_quiz_link(self, context: RunContext) -> str:
+        """Call this when the user says they are ready to take the quiz. This will display a popup with a link to the quiz website."""
+        # Provide immediate verbal feedback to eliminate awkward silence
+        await context.session.say("One moment, I'm preparing the quiz link for you.", allow_interruptions=False)
+        
+        # Start phone monitoring when quiz link is shown
+        if not self.is_proctoring:
+            self.is_proctoring = True
+            self._phone_monitoring_task = asyncio.create_task(self._monitor_for_phone())
+        
+        room = get_job_context().room
+        user_identity = self._get_user_identity()
+        
+        if not user_identity:
+            return "Error: Could not find user participant. Please ensure you are connected."
+        
+        try:
+            # Include room name in URL so quiz-frontend can join the same room
+            room_name = room.name
+            quiz_url = f"http://localhost:3001?room={room_name}"
+            
+            await room.local_participant.perform_rpc(
+                destination_identity=user_identity,
+                method="frontend.showQuizLink",
+                payload=json.dumps({"quizUrl": quiz_url, "roomName": room_name}),
+                response_timeout=5.0
+            )
+            return "Quiz link popup displayed. Now wish the user good luck with a brief, encouraging message."
+        except Exception as e:
+            # If RPC fails, return error message that the LLM can communicate
+            error_msg = f"Unable to display quiz link popup. Please refresh the page and try again. Error: {str(e)}"
+            return error_msg
 
     def _get_user_identity(self):
         """Get the user participant identity, filtering out avatars."""
@@ -106,13 +106,6 @@ class ProctorAgent(Agent):
                 pass
 
     # --- RPC HANDLERS ---
-
-    async def handle_start_monitoring(self, data: RpcInvocationData) -> str:
-        """Frontend calls this when user clicks the quiz link to start phone monitoring"""
-        if not self.is_proctoring:
-            self.is_proctoring = True
-            self._phone_monitoring_task = asyncio.create_task(self._monitor_for_phone())
-        return json.dumps({"status": "monitoring_started"})
 
     async def handle_stop_monitoring(self, data: RpcInvocationData) -> str:
         """Frontend calls this when quiz ends to stop phone monitoring"""
@@ -175,7 +168,6 @@ async def my_agent(ctx: agents.JobContext):
     )
     
     # Register RPC handlers after session.start() (room is now connected)
-    ctx.room.local_participant.register_rpc_method("backend.startMonitoring", assistant.handle_start_monitoring)
     ctx.room.local_participant.register_rpc_method("backend.stopMonitoring", assistant.handle_stop_monitoring)
     ctx.room.local_participant.register_rpc_method("backend.quizScore", assistant.handle_quiz_score)
     

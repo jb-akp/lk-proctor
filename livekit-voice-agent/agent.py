@@ -33,7 +33,7 @@ class ProctorAgent(Agent):
     async def show_quiz_link(self, context: RunContext) -> str:
         """Call this when the user says they are ready to take the quiz. This will display a popup with a link to the quiz website."""
         # Provide immediate verbal feedback to eliminate awkward silence
-        await context.session.say("One moment, I'm preparing the quiz link for you.", allow_interruptions=False)
+        await context.session.say("Perfect! I'm setting up your quiz now. You'll see a link appear on your screen in just a moment.", allow_interruptions=False)
         
         # Start phone monitoring when quiz link is shown
         if not self.is_proctoring:
@@ -91,7 +91,7 @@ class ProctorAgent(Agent):
                 continue
             try:
                 chat_ctx = ChatContext()
-                chat_ctx.add_message(role="system", content="You are a proctor. Look at this image and determine if there is a smartphone, mobile phone, or phone visible. The person might be holding it. Respond ONLY with 'PHONE_DETECTED' or 'CLEAR' - nothing else.")
+                chat_ctx.add_message(role="system", content="You are a proctor. Look at this image and determine if there is a smartphone, mobile phone, or phone visible. The person might be holding it. Note: You will likely see the BACK of the phone (the rear case/camera area), not the screen. Look for rectangular devices that appear to be phones being held. Respond ONLY with 'PHONE_DETECTED' or 'CLEAR' - nothing else.")
                 chat_ctx.add_message(role="user", content=[ImageContent(image=self._latest_frame, inference_width=512, inference_height=512)])
                 
                 full_text = ""
@@ -100,8 +100,49 @@ class ProctorAgent(Agent):
                 
                 if "PHONE_DETECTED" in full_text.upper() or "PHONE" in full_text.upper():
                     room = get_job_context().room
+                    
+                    # Show warning modal only on quiz-frontend (participants without video tracks)
+                    for participant_identity, participant in room.remote_participants.items():
+                        if not participant_identity.startswith("voice_assistant_user_"):
+                            continue  # Skip non-user participants
+                        # Quiz-frontend doesn't publish video, nextjs-frontend does
+                        has_video = any(
+                            pub.track and pub.track.kind == rtc.TrackKind.KIND_VIDEO
+                            for pub in participant.track_publications.values()
+                        )
+                        if not has_video:  # This is quiz-frontend (no video published)
+                            try:
+                                await room.local_participant.perform_rpc(
+                                    destination_identity=participant_identity,
+                                    method="frontend.showPhoneWarning",
+                                    payload="{}",
+                                    response_timeout=5.0
+                                )
+                            except Exception:
+                                pass  # Don't fail if RPC fails
+                    
                     # Speak the warning
                     await self._session.say("I notice you have your phone out. Please put it away so we can continue the quiz fairly. Thank you!", allow_interruptions=False, add_to_chat_ctx=False)
+                    
+                    # Hide warning modal after agent finishes speaking
+                    await asyncio.sleep(1.5)  # Wait for speech to complete (reduced from 3.0)
+                    for participant_identity, participant in room.remote_participants.items():
+                        if not participant_identity.startswith("voice_assistant_user_"):
+                            continue  # Skip non-user participants
+                        has_video = any(
+                            pub.track and pub.track.kind == rtc.TrackKind.KIND_VIDEO
+                            for pub in participant.track_publications.values()
+                        )
+                        if not has_video:  # This is quiz-frontend
+                            try:
+                                await room.local_participant.perform_rpc(
+                                    destination_identity=participant_identity,
+                                    method="frontend.hidePhoneWarning",
+                                    payload="{}",
+                                    response_timeout=5.0
+                                )
+                            except Exception:
+                                pass
             except Exception:
                 pass
 

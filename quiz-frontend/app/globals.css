@@ -11,3 +11,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Ensure gradient text works properly */
+.bg-clip-text {
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+

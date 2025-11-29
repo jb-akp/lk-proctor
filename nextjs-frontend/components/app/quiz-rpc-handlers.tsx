@@ -57,7 +57,7 @@ export function RpcHandlers() {
         `;
         if (!document.head.querySelector('style[data-quiz-link-styles]')) {
           style.setAttribute('data-quiz-link-styles', 'true');
-          document.head.appendChild(style);
+        document.head.appendChild(style);
         }
 
         // Create popup card
@@ -121,15 +121,15 @@ export function RpcHandlers() {
         linkButton.style.cssText = `
           display: inline-block;
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
+              color: white;
           text-decoration: none;
           padding: 16px 32px;
           border-radius: 12px;
-          font-size: 18px;
-          font-weight: 600;
+              font-size: 18px;
+              font-weight: 600;
           box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
           transition: all 0.3s ease;
-          cursor: pointer;
+              cursor: pointer;
           border: none;
         `;
         linkButton.textContent = "Open Quiz →";
@@ -209,7 +209,7 @@ export function RpcHandlers() {
       }
     };
 
-    // Register RPC method
+    // Register RPC methods
     room.localParticipant.registerRpcMethod("frontend.showQuizLink", async (data) => await handleShowQuizLink(data));
 
     return () => {

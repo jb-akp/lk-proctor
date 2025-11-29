@@ -17,7 +17,7 @@ class ProctorAgent(Agent):
             instructions="""You are a professional exam proctor. Your role is to:
 1. Greet the user warmly and ask if they are ready to begin the quiz
 2. When they say yes or indicate readiness, call the show_quiz_link tool to display the quiz link
-3. After the quiz link is shown, wish them good luck with a brief, encouraging message like "Good luck! Take your time and do your best."
+3. After the quiz link is shown, wish them good luck with a brief, encouraging message like "Good luck! Take your time, read each question carefully, and do your best. I'll be here monitoring if you need anything."
 4. Once you've wished them luck, remain SILENT and observe. Do not speak during the quiz.
 5. Act professionally and maintain a quiet, focused environment.""",
         )
@@ -26,6 +26,7 @@ class ProctorAgent(Agent):
         self._latest_frame = None
         self._video_stream = None
         self._phone_monitoring_task = None
+        self._tasks = []  # Prevent garbage collection of running tasks
         self.is_proctoring = False
 
     # --- QUIZ LINK TOOL ---
@@ -33,7 +34,7 @@ class ProctorAgent(Agent):
     async def show_quiz_link(self, context: RunContext) -> str:
         """Call this when the user says they are ready to take the quiz. This will display a popup with a link to the quiz website."""
         # Provide immediate verbal feedback to eliminate awkward silence
-        await context.session.say("Perfect! I'm setting up your quiz now. You'll see a link appear on your screen in just a moment.", allow_interruptions=False)
+        await context.session.say("Perfect! I'm setting up your quiz now. You'll see a link appear on your screen in just a moment. Once you click it, the quiz will open in a new tab.", allow_interruptions=False)
         
         # Start phone monitoring when quiz link is shown
         if not self.is_proctoring:
@@ -72,17 +73,68 @@ class ProctorAgent(Agent):
         return next(iter(room.remote_participants), None)
 
     async def on_enter(self):
+        """Initialize video stream when agent joins. User always joins first, so tracks should already be available."""
         self._room = get_job_context().room
         
+        # Since user joins first, check for already-subscribed video tracks
+        # (autoSubscribe is enabled by default, so tracks should be subscribed)
+        def find_and_setup_video_track():
+            remote_participants = list(self._room.remote_participants.values())
+            if not remote_participants:
+                return None
+            
+            # Get the user participant (not avatar)
+            user_participant = None
+            for participant in remote_participants:
+                if not participant.identity.startswith("voice_assistant_user_"):
+                    continue
+                user_participant = participant
+                break
+            
+            if not user_participant:
+                user_participant = remote_participants[0]
+            
+            # Look for subscribed video track first (most common case)
+            for publication in user_participant.track_publications.values():
+                if (publication.track and 
+                    publication.track.kind == rtc.TrackKind.KIND_VIDEO):
+                    return publication.track
+            
+            return None
+        
+        # Try to find video track immediately
+        video_track = find_and_setup_video_track()
+        if video_track:
+            self._create_video_stream(video_track)
+        
+        # Watch for video tracks that get subscribed later
+        # (handles case where user enables camera after bot joins, or timing edge cases)
         @self._room.on("track_subscribed")
         def on_track_subscribed(track, publication, participant):
-            if track.kind == rtc.TrackKind.KIND_VIDEO:
-                self._video_stream = rtc.VideoStream(track)
-                asyncio.create_task(self._read_stream())
-
-    async def _read_stream(self):
-        async for event in self._video_stream:
-            self._latest_frame = event.frame
+            # Only process video tracks from user participants (not avatars)
+            if track.kind != rtc.TrackKind.KIND_VIDEO:
+                return
+            # Skip avatar participants - we only want user video
+            if participant.identity.startswith("voice_assistant_user_"):
+                self._create_video_stream(track)
+    
+    def _create_video_stream(self, track: rtc.Track):
+        """Helper method to buffer the latest video frame from the user's track"""
+        # Close any existing stream (we only want one at a time)
+        if self._video_stream is not None:
+            self._video_stream.close()
+        
+        # Create a new stream to receive frames
+        self._video_stream = rtc.VideoStream(track)
+        async def read_stream():
+            async for event in self._video_stream:
+                # Store the latest frame for use later
+                self._latest_frame = event.frame
+        
+        # Store the async task to prevent garbage collection
+        task = asyncio.create_task(read_stream())
+        task.add_done_callback(lambda t: self._tasks.remove(t) if t in self._tasks else None)
+        self._tasks.append(task)
 
     async def _monitor_for_phone(self):
         while True:
@@ -122,7 +174,7 @@ class ProctorAgent(Agent):
                                 pass  # Don't fail if RPC fails
                     
                     # Speak the warning
-                    await self._session.say("I notice you have your phone out. Please put it away so we can continue the quiz fairly. Thank you!", allow_interruptions=False, add_to_chat_ctx=False)
+                    await self._session.say("I've detected a phone in view. Please put it away immediately so we can maintain quiz integrity. Thank you for your cooperation.", allow_interruptions=False, add_to_chat_ctx=False)
                     
                     # Hide warning modal after agent finishes speaking
                     await asyncio.sleep(1.5)  # Wait for speech to complete (reduced from 3.0)
@@ -168,7 +220,7 @@ class ProctorAgent(Agent):
             self._phone_monitoring_task = None
         
         # Speak the score
-        await self._session.say(f"Great job completing the quiz! You scored {score_text}. Well done!", allow_interruptions=False, add_to_chat_ctx=True)
+        await self._session.say(f"Excellent work completing the quiz! You scored {score_text}. That's fantastic! Well done!", allow_interruptions=False, add_to_chat_ctx=True)
         
         return json.dumps({"status": "score_received"})
 
@@ -188,14 +240,14 @@ async def my_agent(ctx: agents.JobContext):
     vision_llm = openai.LLM(model="gpt-4o-mini")
     assistant = ProctorAgent(session, vision_llm)
 
-    # ANAM avatar disabled to save credits during testing
-    # avatar = anam.AvatarSession(
-    #     persona_config=anam.PersonaConfig(
-    #         name="Quiz Proctor",
-    #         avatarId="30fa96d0-26c4-4e55-94a0-517025942e18",  
-    #     ),
-    # )
-    # await avatar.start(session, room=ctx.room)
+    # ANAM avatar
+    avatar = anam.AvatarSession(
+        persona_config=anam.PersonaConfig(
+            name="Quiz Proctor",
+            avatarId="30fa96d0-26c4-4e55-94a0-517025942e18",  
+        ),
+    )
+    await avatar.start(session, room=ctx.room)
     
     await session.start(
         room=ctx.room,

@@ -13,8 +13,8 @@ export function RpcHandlers() {
 
     const handleShowQuizLink = async (data: any): Promise<string> => {
       try {
-        const payload = typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload;
-        const quizUrl = payload?.quizUrl || "http://localhost:3001";
+        // Quiz URL is hardcoded, no payload needed
+        const quizUrl = "http://localhost:3001";
         
         setQuizPopup({ quizUrl });
         return "Quiz link popup displayed";

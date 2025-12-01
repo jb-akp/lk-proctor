@@ -32,21 +32,14 @@ class ProctorAgent(Agent):
     @function_tool()
     async def show_quiz_link(self, context: RunContext) -> str:
         """Call this when the user confirms they have shared their screen and are ready to take the quiz. This will display a popup with a link to the quiz website."""
-        # Provide immediate verbal feedback to eliminate awkward silence
         await context.session.say("Perfect! I'm setting up your quiz now. You'll see a link appear on your screen in just a moment. Once you click it, the quiz will open in a new tab.", allow_interruptions=False)
-        
-        # Start monitoring when quiz link is shown (camera for phones only)
         self._monitoring_task = asyncio.create_task(self._monitor_phone())
         
-        # Get user participant (STANDARD kind, not avatar)
         user_participant = next(p for p in self._room.remote_participants.values() if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD)
-        
-        # Quiz URL is hardcoded on frontend, no payload needed
         await self._room.local_participant.perform_rpc(
             destination_identity=user_participant.identity,
             method="frontend.showQuizLink",
-            payload="",
-            response_timeout=5.0
+            payload=""
         )
         return "Quiz link popup displayed. Now wish the user good luck with a brief, encouraging message."
 
@@ -54,10 +47,7 @@ class ProctorAgent(Agent):
     @function_tool()
     async def check_quiz_score(self, context: RunContext) -> str:
         """Call this when the user says they are done with the quiz. This will check their screen share once to read the score and return it. The agent will then announce the score naturally."""
-        # Provide immediate feedback while checking the score
         await context.session.say("Congratulations on completing the quiz! Let me check your score now.", allow_interruptions=False)
-        
-        # Check the screen and return whatever the vision LLM says
         response = await self._check_frame_with_llm(
             self._latest_screen_frame,
             "You are a proctor monitoring a quiz. Look at this screenshot of the quiz screen. The quiz completion screen will show 'Quiz Complete!' as a heading and display a score like 'X/4' or 'X out of 4'. If you see the quiz completion screen, respond with the score you see (e.g., '3 out of 4' or '4/4'). If the quiz is not complete, respond with 'The quiz is still in progress.'",
@@ -71,7 +61,6 @@ class ProctorAgent(Agent):
         """Initialize video streams when agent joins. Camera is guaranteed to be on, screen share will start when quiz loads."""
         self._room = get_job_context().room
         
-        # Get user participant (STANDARD kind, not avatar)
         user_participant = next(p for p in self._room.remote_participants.values() if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD)
         
         # Set up video track subscriptions (camera and screen share)
@@ -130,7 +119,6 @@ class ProctorAgent(Agent):
                 await self._session.say("I've detected a phone in view. Please put it away immediately so we can maintain quiz integrity. Thank you for your cooperation.", allow_interruptions=False, add_to_chat_ctx=False)
                 break
 
-
 # --- MAIN ENTRY POINT ---
 
 server = AgentServer()
@@ -147,10 +135,8 @@ async def my_agent(ctx: agents.JobContext):
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
-    assistant = ProctorAgent(session, llm)
 
-    # ANAM avatar
-    avatar = anam.AvatarSession(
+    avatar = anam.AvatarSession( # ANAM avatar
         persona_config=anam.PersonaConfig(
             name="Quiz Proctor",
             avatarId="30fa96d0-26c4-4e55-94a0-517025942e18",  
@@ -160,7 +146,7 @@ async def my_agent(ctx: agents.JobContext):
     
     await session.start(
         room=ctx.room,
-        agent=assistant,
+        agent=ProctorAgent(session, llm),
         room_options=room_io.RoomOptions(
             video_input=True,  # Critical: enables camera stream for proctoring
             audio_input=room_io.AudioInputOptions(

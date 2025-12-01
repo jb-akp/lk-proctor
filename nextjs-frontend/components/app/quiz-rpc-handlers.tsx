@@ -24,11 +24,11 @@ export function RpcHandlers() {
     };
 
     // Register RPC methods
-    room.localParticipant.registerRpcMethod("frontend.showQuizLink", async (data) => await handleShowQuizLink(data));
+    room.registerRpcMethod("frontend.showQuizLink", async (data) => await handleShowQuizLink(data));
 
     return () => {
       try {
-        room.localParticipant.unregisterRpcMethod("frontend.showQuizLink");
+        room.unregisterRpcMethod("frontend.showQuizLink");
       } catch (error) {
         // Ignore errors during cleanup
       }

@@ -36,12 +36,14 @@ class ProctorAgent(Agent):
         
         self._monitoring_task = asyncio.create_task(self._monitor_phone())
         
-        user_participant = next(p for p in self._room.remote_participants.values() if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD)
+        for participant in self._room.remote_participants.values():
+            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD:
+                user_participant = participant
+                break
         
         await self._room.local_participant.perform_rpc(
             destination_identity=user_participant.identity,
-            method="frontend.showQuizLink",
-            payload=""
+            method="frontend.showQuizLink"
         )
         
         return "Quiz link popup displayed. Now wish the user good luck with a brief, encouraging message."
@@ -50,7 +52,7 @@ class ProctorAgent(Agent):
     @function_tool()
     async def check_quiz_score(self, context: RunContext) -> str:
         """Call this when the user says they are done with the quiz. This will check their screen share once to read the score and return it. The agent will then announce the score naturally."""
-        await context.session.say("Congratulations on completing the quiz! Let me check your score now.", allow_interruptions=False)
+        await context.session.say("Congratulations on completing the quiz!", allow_interruptions=False)
         
         response = await self._check_frame_with_llm(
             self._latest_screen_frame,
@@ -65,7 +67,10 @@ class ProctorAgent(Agent):
         """Initialize video streams when agent joins. Camera is guaranteed to be on, screen share will start when quiz loads."""
         self._room = get_job_context().room
         
-        user_participant = next(p for p in self._room.remote_participants.values() if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD)
+        for participant in self._room.remote_participants.values():
+            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD:
+                user_participant = participant
+                break
         
         # Set up video track subscriptions (camera and screen share)
         @self._room.on("track_subscribed")

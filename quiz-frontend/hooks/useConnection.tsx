@@ -77,47 +77,12 @@ export function ConnectionProvider({ children }: ConnectionProviderProps) {
   const { start: startSession, end: endSession, room } = session;
 
   useEffect(() => {
-    // Auto-connect when component mounts (RPC only, no media publishing)
+    // Auto-connect when component mounts (screen sharing will be started by Quiz component)
     setIsConnectionActive(true);
     
-    // Suppress publish track errors (expected - we don't publish tracks)
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      const error = event.reason;
-      if (error?.message?.includes('insufficient permissions') || 
-          error?.message?.includes('PublishTrackError') ||
-          error?.name === 'PublishTrackError') {
-        event.preventDefault(); // Suppress this expected error
-        return;
-      }
-    };
-
-    const handleError = (event: ErrorEvent) => {
-      const error = event.error;
-      if (error?.message?.includes('insufficient permissions') || 
-          error?.message?.includes('PublishTrackError') ||
-          error?.name === 'PublishTrackError') {
-        event.preventDefault(); // Suppress this expected error
-        return;
-      }
-    };
-
-    window.addEventListener('unhandledrejection', handleUnhandledRejection);
-    window.addEventListener('error', handleError);
-
     startSession().catch((error) => {
-      // Suppress publish track errors during session start
-      if (error?.message?.includes('insufficient permissions') || 
-          error?.message?.includes('PublishTrackError') ||
-          error?.name === 'PublishTrackError') {
-        return; // Expected error, ignore
-      }
       console.error('Session start error:', error);
     });
-
-    return () => {
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
-      window.removeEventListener('error', handleError);
-    };
   }, [startSession]);
 
   const connect = (startSessionParam = true) => {

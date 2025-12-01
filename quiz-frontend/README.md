@@ -1,13 +1,13 @@
 # Quiz Frontend
 
-A simplified frontend application for taking a trivia quiz with AI proctoring.
+A completely standalone frontend application for taking a trivia quiz. No LiveKit dependencies - just a pure React quiz app.
 
 ## Features
 
 - 4 hardcoded trivia questions
 - Client-side quiz logic (answers, scoring)
-- LiveKit integration for voice agent
-- RPC communication with backend for proctoring
+- Pure React component - no external dependencies needed
+- Completely independent from LiveKit and the agent
 
 ## Setup
 
@@ -16,14 +16,7 @@ A simplified frontend application for taking a trivia quiz with AI proctoring.
 pnpm install
 ```
 
-2. Create `.env.local` with:
-```
-LIVEKIT_URL=your_livekit_url
-LIVEKIT_API_KEY=your_api_key
-LIVEKIT_API_SECRET=your_api_secret
-```
-
-3. Run the development server:
+2. Run the development server:
 ```bash
 pnpm dev
 ```
@@ -32,9 +25,10 @@ The app will run on http://localhost:3001
 
 ## How it works
 
-1. User clicks "Start Quiz"
-2. Frontend calls `backend.quizStarted` RPC to notify backend
-3. User answers questions (all logic is client-side)
-4. When quiz completes, frontend calls `backend.quizEnded` with score
-5. Backend can send `frontend.hideQuiz` / `frontend.showQuiz` RPCs to hide/show quiz during phone detection
+1. User opens the quiz page at `http://localhost:3001` (standalone, no connection needed)
+2. User clicks "Start Quiz" and answers questions (all logic is client-side)
+3. The agent monitors the user's screen share from the NextJS frontend to detect quiz completion
+4. Quiz frontend has no knowledge of the agent - it's just a regular quiz webpage
+
+**Note:** The user screen shares from the NextJS frontend (which is connected to LiveKit). The agent sees the screen share and monitors the quiz visually.
 

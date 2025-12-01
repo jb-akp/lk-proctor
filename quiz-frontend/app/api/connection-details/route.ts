@@ -72,8 +72,9 @@ function createParticipantToken(
   const grant: VideoGrant = {
     room: roomName,
     roomJoin: true,
-    canPublish: false, // No audio/video publishing - RPC only
-    canPublishData: true, // Allow RPC communication
+    canPublish: true, // Allow screen share publishing so agent can see the quiz
+    canPublishSources: [3], // Only screen share (3 = TrackSource.ScreenShare), no camera/mic
+    canPublishData: false, // No RPC needed - agent monitors visually
     canSubscribe: true,
   };
   at.addGrant(grant);

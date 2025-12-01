@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRoomContext } from '@livekit/components-react';
+import { useState } from 'react';
 
 // Add custom styles for animations
 const styles = `
@@ -72,36 +71,11 @@ const QUIZ_QUESTIONS = [
 ];
 
 export function Quiz() {
-  const room = useRoomContext();
   const [quizStarted, setQuizStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [score, setScore] = useState(0);
   const [quizComplete, setQuizComplete] = useState(false);
-  const [showPhoneWarning, setShowPhoneWarning] = useState(false);
-
-  // Listen for phone warning RPCs from backend
-  useEffect(() => {
-    if (!room) return;
-
-    const handleShowPhoneWarning = async (): Promise<string> => {
-      setShowPhoneWarning(true);
-      return 'Phone warning shown';
-    };
-
-    const handleHidePhoneWarning = async (): Promise<string> => {
-      setShowPhoneWarning(false);
-      return 'Phone warning hidden';
-    };
-
-    room.localParticipant.registerRpcMethod('frontend.showPhoneWarning', async () => await handleShowPhoneWarning());
-    room.localParticipant.registerRpcMethod('frontend.hidePhoneWarning', async () => await handleHidePhoneWarning());
-
-    return () => {
-      room.localParticipant.unregisterRpcMethod('frontend.showPhoneWarning');
-      room.localParticipant.unregisterRpcMethod('frontend.hidePhoneWarning');
-    };
-  }, [room]);
 
   const startQuiz = () => {
     setQuizStarted(true);
@@ -130,30 +104,12 @@ export function Quiz() {
     }
   };
 
-  const finishQuiz = async () => {
+  const finishQuiz = () => {
     const question = QUIZ_QUESTIONS[currentQuestion];
     const finalScore = selectedAnswer === question.correctAnswer ? score + 1 : score;
     setScore(finalScore);
     setQuizComplete(true);
-
-    // Send score to agent via RPC
-    if (room) {
-      try {
-        const remoteParticipants = Array.from(room.remoteParticipants.values());
-        const agentParticipant = remoteParticipants.find(p => p.isAgent);
-        if (agentParticipant) {
-          await room.localParticipant.performRpc({
-            destinationIdentity: agentParticipant.identity,
-            method: 'backend.quizScore',
-            payload: JSON.stringify({
-              score: `${finalScore} out of ${QUIZ_QUESTIONS.length}`,
-            }),
-          });
-        }
-      } catch (error) {
-        console.error('Failed to send score to agent:', error);
-      }
-    }
+    // Agent will detect quiz completion from screen share and announce the score
   };
 
   if (!quizStarted) {
@@ -454,78 +410,7 @@ export function Quiz() {
   const question = QUIZ_QUESTIONS[currentQuestion];
   const isCorrect = selectedAnswer === question.correctAnswer;
 
-  // Phone warning modal
-  const PhoneWarningModal = () => {
-    if (!showPhoneWarning) return null;
-    
-    return (
-      <div 
-        className="fixed inset-0 z-50 flex items-center justify-center"
-        style={{
-          background: 'rgba(0, 0, 0, 0.6)',
-          backdropFilter: 'blur(4px)',
-        }}
-      >
-        <div 
-          style={{
-            background: 'linear-gradient(to bottom right, #dc2626, #b91c1c, #991b1b)',
-            borderRadius: '20px',
-            boxShadow: '0 20px 40px -12px rgba(220, 38, 38, 0.5)',
-            padding: '28px',
-            maxWidth: '380px',
-            width: '100%',
-            margin: '0 16px',
-            border: '3px solid #fca5a5',
-            textAlign: 'center',
-          }}
-        >
-          <div 
-            style={{
-              fontSize: '56px',
-              marginBottom: '16px',
-              animation: 'pulse 1s ease-in-out infinite',
-            }}
-          >
-            ⚠️
-          </div>
-          <h2 
-            style={{
-              fontSize: '28px',
-              fontWeight: 900,
-              color: 'white',
-              marginBottom: '12px',
-              letterSpacing: '-0.5px',
-            }}
-          >
-            WARNING
-          </h2>
-          <p 
-            style={{
-              fontSize: '18px',
-              color: 'white',
-              fontWeight: 900,
-              marginBottom: '8px',
-            }}
-          >
-            Phone Detected
-          </p>
-          <p 
-            style={{
-              fontSize: '14px',
-              color: '#fecaca',
-              fontWeight: 600,
-            }}
-          >
-            Please put your phone away immediately
-          </p>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <>
-      <PhoneWarningModal />
       <div 
         className="flex items-center justify-center min-h-screen p-4 relative overflow-hidden"
         style={{
@@ -833,6 +718,5 @@ export function Quiz() {
           )}
         </div>
       </div>
-    </>
   );
 }

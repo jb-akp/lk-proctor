@@ -13,8 +13,8 @@ class ProctorAgent(Agent):
     def __init__(self, session: AgentSession, llm_instance: openai.LLM) -> None:
         super().__init__(
             instructions="""You are a professional exam proctor. Your role is to:
-1. Greet the user warmly and ask them how they are doing
-2. Ask them to please share their screen so you can monitor the quiz (they can use the screen share button in the interface)
+1. Greet the user warmly with a short greeting like "Hello! How are you? Are you ready to start the quiz?"
+2. After they respond, ask them to please share their screen so you can monitor the quiz (they can use the screen share button in the interface)
 3. Wait for them to confirm they have shared their screen
 4. When they confirm, call the show_quiz_link tool to display the quiz link
 5. After the quiz link is shown, wish them good luck with a brief, encouraging message like "Good luck! Take your time, read each question carefully, and do your best. I'll be here monitoring if you need anything."
@@ -38,7 +38,8 @@ class ProctorAgent(Agent):
         # Start monitoring when quiz link is shown (camera for phones only)
         self._monitoring_task = asyncio.create_task(self._monitor_phone())
         
-        user_participant = self._get_user_participant()
+        # Get user participant (STANDARD kind, not avatar)
+        user_participant = next(p for p in self._room.remote_participants.values() if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD)
         
         # Quiz URL is hardcoded on frontend, no payload needed
         await self._room.local_participant.perform_rpc(
@@ -53,6 +54,9 @@ class ProctorAgent(Agent):
     @function_tool()
     async def check_quiz_score(self, context: RunContext) -> str:
         """Call this when the user says they are done with the quiz. This will check their screen share once to read the score and return it. The agent will then announce the score naturally."""
+        # Provide immediate feedback while checking the score
+        await context.session.say("Congratulations on completing the quiz! Let me check your score now.", allow_interruptions=False)
+        
         # Check the screen and return whatever the vision LLM says
         response = await self._check_frame_with_llm(
             self._latest_screen_frame,
@@ -61,28 +65,14 @@ class ProctorAgent(Agent):
             inference_height=768
         )
         
-        self._stop_monitoring()
         return response
-
-    def _get_user_participant(self) -> rtc.RemoteParticipant:
-        """Get the user participant (STANDARD kind, not avatar/agent)."""
-        remote_participants = list(self._room.remote_participants.values())
-        
-        # Find STANDARD participant (users are STANDARD, avatars are AGENT)
-        for participant in remote_participants:
-            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD:
-                return participant
-        
-        # Fallback to first participant if no STANDARD participant found
-        return remote_participants[0]
-    
 
     async def on_enter(self) -> None:
         """Initialize video streams when agent joins. Camera is guaranteed to be on, screen share will start when quiz loads."""
         self._room = get_job_context().room
         
-        # Find the user participant's tracks (camera and screen share)
-        user_participant = self._get_user_participant()
+        # Get user participant (STANDARD kind, not avatar)
+        user_participant = next(p for p in self._room.remote_participants.values() if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD)
         
         # Set up video track subscriptions (camera and screen share)
         @self._room.on("track_subscribed")
@@ -99,10 +89,6 @@ class ProctorAgent(Agent):
         for publication in user_participant.track_publications.values():
             if publication.track and publication.track.kind == rtc.TrackKind.KIND_VIDEO:
                 self._create_video_stream(publication.track, publication.source == rtc.TrackSource.SOURCE_SCREENSHARE)
-    
-    def _stop_monitoring(self) -> None:
-        """Stop monitoring and cancel the monitoring task."""
-        self._monitoring_task.cancel()
     
     def _create_video_stream(self, track: rtc.Track, is_screen_share: bool) -> None:
         """Helper method to buffer the latest video frame from a video track"""
@@ -133,14 +119,14 @@ class ProctorAgent(Agent):
     async def _monitor_phone(self) -> None:
         """Monitor camera for phones - stops after first detection"""
         while True:
-            await asyncio.sleep(6.0)
+            await asyncio.sleep(3.0)
             
             # Check for phone in camera feed
             response = await self._check_frame_with_llm(
                 self._latest_camera_frame,
-                "You are a proctor. Look at this image and determine if there is a smartphone, mobile phone, or phone visible. The person might be holding it. Note: You will likely see the BACK of the phone (the rear case/camera area), not the screen. Look for rectangular devices that appear to be phones being held. Respond ONLY with 'PHONE_DETECTED' or 'CLEAR' - nothing else."
+                "You are a proctor. Look at this image and determine if there is a smartphone, mobile phone, or phone visible. The person might be holding it. Note: You will likely see the BACK of the phone (the rear case/camera area), not the screen. Look for rectangular devices that appear to be phones being held. Respond ONLY with 'PHONE' or 'CLEAR' - nothing else, make sure every letter is in uppercase."
             )
-            if "PHONE" in response.upper():
+            if "PHONE" in response:
                 await self._session.say("I've detected a phone in view. Please put it away immediately so we can maintain quiz integrity. Thank you for your cooperation.", allow_interruptions=False, add_to_chat_ctx=False)
                 break
 
@@ -184,7 +170,7 @@ async def my_agent(ctx: agents.JobContext):
     )
     
     await session.generate_reply(
-        instructions="Greet the user warmly in English. Sound professional but friendly. First ask how they are doing, then ask them to please share their screen so you can monitor them during the quiz. Say something like 'Hello! Welcome. How are you doing today? Before we begin, could you please share your screen? I'll need to monitor your screen during the quiz for proctoring purposes. You can use the screen share button in the interface.'"
+        instructions="Greet the user warmly with a short greeting. Sound professional but friendly. Say something like 'Hello! How are you? Are you ready to start the quiz?' Keep it brief and wait for their response before asking about screen sharing."
     )
 
 if __name__ == "__main__":

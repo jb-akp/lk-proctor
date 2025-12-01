@@ -9,10 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@livekit/components-react": "^2.9.15",
-    "@livekit/protocol": "^1.40.0",
-    "livekit-client": "^2.15.15",
-    "livekit-server-sdk": "^2.13.2",
     "next": "15.5.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

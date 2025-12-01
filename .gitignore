@@ -1,1 +1,2 @@
 livekit-voice-agent/.env.local
+__pycache__/

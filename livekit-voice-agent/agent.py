@@ -33,14 +33,17 @@ class ProctorAgent(Agent):
     async def show_quiz_link(self, context: RunContext) -> str:
         """Call this when the user confirms they have shared their screen and are ready to take the quiz. This will display a popup with a link to the quiz website."""
         await context.session.say("Perfect! I'm setting up your quiz now. You'll see a link appear on your screen in just a moment. Once you click it, the quiz will open in a new tab.", allow_interruptions=False)
+        
         self._monitoring_task = asyncio.create_task(self._monitor_phone())
         
         user_participant = next(p for p in self._room.remote_participants.values() if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD)
+        
         await self._room.local_participant.perform_rpc(
             destination_identity=user_participant.identity,
             method="frontend.showQuizLink",
             payload=""
         )
+        
         return "Quiz link popup displayed. Now wish the user good luck with a brief, encouraging message."
 
     # --- CHECK QUIZ SCORE TOOL ---
@@ -48,6 +51,7 @@ class ProctorAgent(Agent):
     async def check_quiz_score(self, context: RunContext) -> str:
         """Call this when the user says they are done with the quiz. This will check their screen share once to read the score and return it. The agent will then announce the score naturally."""
         await context.session.say("Congratulations on completing the quiz! Let me check your score now.", allow_interruptions=False)
+        
         response = await self._check_frame_with_llm(
             self._latest_screen_frame,
             "You are a proctor monitoring a quiz. Look at this screenshot of the quiz screen. The quiz completion screen will show 'Quiz Complete!' as a heading and display a score like 'X/4' or 'X out of 4'. If you see the quiz completion screen, respond with the score you see (e.g., '3 out of 4' or '4/4'). If the quiz is not complete, respond with 'The quiz is still in progress.'",
@@ -78,7 +82,7 @@ class ProctorAgent(Agent):
         for publication in user_participant.track_publications.values():
             if publication.track and publication.track.kind == rtc.TrackKind.KIND_VIDEO:
                 self._create_video_stream(publication.track, publication.source == rtc.TrackSource.SOURCE_SCREENSHARE)
-    
+
     def _create_video_stream(self, track: rtc.Track, is_screen_share: bool) -> None:
         """Helper method to buffer the latest video frame from a video track"""
         stream_attr = "_screen_stream" if is_screen_share else "_camera_stream"
@@ -119,6 +123,7 @@ class ProctorAgent(Agent):
                 await self._session.say("I've detected a phone in view. Please put it away immediately so we can maintain quiz integrity. Thank you for your cooperation.", allow_interruptions=False, add_to_chat_ctx=False)
                 break
 
+
 # --- MAIN ENTRY POINT ---
 
 server = AgentServer()
@@ -127,7 +132,7 @@ server = AgentServer()
 async def my_agent(ctx: agents.JobContext):
     # Single LLM instance for both conversation and vision
     llm = openai.LLM(model="gpt-4o-mini")
-    
+
     session = AgentSession(
         stt="assemblyai/universal-streaming:en",
         llm=llm,
@@ -136,14 +141,14 @@ async def my_agent(ctx: agents.JobContext):
         turn_detection=MultilingualModel(),
     )
 
-    avatar = anam.AvatarSession( # ANAM avatar
+    avatar = anam.AvatarSession(
         persona_config=anam.PersonaConfig(
             name="Quiz Proctor",
             avatarId="30fa96d0-26c4-4e55-94a0-517025942e18",  
         ),
     )
     await avatar.start(session, room=ctx.room)
-    
+
     await session.start(
         room=ctx.room,
         agent=ProctorAgent(session, llm),
@@ -154,7 +159,7 @@ async def my_agent(ctx: agents.JobContext):
             ),
         ),
     )
-    
+
     await session.generate_reply(
         instructions="Greet the user warmly with a short greeting. Sound professional but friendly. Say something like 'Hello! How are you? Are you ready to start the quiz?' Keep it brief and wait for their response before asking about screen sharing."
     )

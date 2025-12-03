@@ -4,7 +4,7 @@ import asyncio
 from livekit import agents, rtc
 from livekit.agents import AgentServer, AgentSession, Agent, room_io, get_job_context, function_tool, RunContext
 from livekit.agents.llm import ChatContext, ImageContent
-from livekit.plugins import noise_cancellation, silero, openai
+from livekit.plugins import noise_cancellation, silero, openai, anam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 load_dotenv(".env.local")
@@ -95,8 +95,6 @@ class ProctorAgent(Agent):
                 if chunk.delta and chunk.delta.content:
                     response += chunk.delta.content
             
-            response = response.strip()
-            
             # Check if response is a score (format: "3 out of 4") - only when quiz is complete
             if "out of" in response:
                 await self._session.say(
@@ -128,6 +126,15 @@ async def my_agent(ctx: agents.JobContext):
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
+    
+    avatar = anam.AvatarSession(
+        persona_config=anam.PersonaConfig(
+            name="Proctor",
+            avatarId="default",
+        ),
+    )
+    
+    await avatar.start(session, room=ctx.room)
     
     await session.start(
         room=ctx.room,

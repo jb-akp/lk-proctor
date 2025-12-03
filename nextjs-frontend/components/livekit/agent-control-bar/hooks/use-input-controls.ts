@@ -76,14 +76,11 @@ export function useInputControls({
 
   const handleToggleCamera = useCallback(
     async (enabled?: boolean) => {
-      if (screenShareToggle.enabled) {
-        screenShareToggle.toggle(false);
-      }
       await cameraToggle.toggle(enabled);
       // persist video input enabled preference
       saveVideoInputEnabled(!cameraToggle.enabled);
     },
-    [cameraToggle, screenShareToggle, saveVideoInputEnabled]
+    [cameraToggle, saveVideoInputEnabled]
   );
 
   const handleToggleMicrophone = useCallback(
@@ -97,12 +94,9 @@ export function useInputControls({
 
   const handleToggleScreenShare = useCallback(
     async (enabled?: boolean) => {
-      if (cameraToggle.enabled) {
-        cameraToggle.toggle(false);
-      }
       await screenShareToggle.toggle(enabled);
     },
-    [cameraToggle, screenShareToggle]
+    [screenShareToggle]
   );
   const handleMicrophoneDeviceSelectError = useCallback(
     (error: Error) => onDeviceError?.({ source: Track.Source.Microphone, error }),

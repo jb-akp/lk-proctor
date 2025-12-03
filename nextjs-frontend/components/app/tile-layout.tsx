@@ -196,13 +196,13 @@ export function TileLayout({ chatOpen }: TileLayoutProps) {
               !chatOpen && classNames.secondTileChatClosed,
             ])}
           >
-            {/* Camera & Screen Share */}
+            {/* Camera & Screen Share - Prioritize screen share, but show camera if screen share not active */}
             <AnimatePresence>
               {((cameraTrack && isCameraEnabled) || (screenShareTrack && isScreenShareEnabled)) && (
                 <MotionContainer
-                  key="camera"
+                  key={screenShareTrack && isScreenShareEnabled ? "screenshare" : "camera"}
                   layout="position"
-                  layoutId="camera"
+                  layoutId={screenShareTrack && isScreenShareEnabled ? "screenshare" : "camera"}
                   initial={{
                     opacity: 0,
                     scale: 0,
@@ -222,9 +222,9 @@ export function TileLayout({ chatOpen }: TileLayoutProps) {
                   className="drop-shadow-lg/20"
                 >
                   <VideoTrack
-                    trackRef={cameraTrack || screenShareTrack}
-                    width={(cameraTrack || screenShareTrack)?.publication.dimensions?.width ?? 0}
-                    height={(cameraTrack || screenShareTrack)?.publication.dimensions?.height ?? 0}
+                    trackRef={(screenShareTrack && isScreenShareEnabled) ? screenShareTrack : (cameraTrack || screenShareTrack)}
+                    width={((screenShareTrack && isScreenShareEnabled) ? screenShareTrack : (cameraTrack || screenShareTrack))?.publication.dimensions?.width ?? 0}
+                    height={((screenShareTrack && isScreenShareEnabled) ? screenShareTrack : (cameraTrack || screenShareTrack))?.publication.dimensions?.height ?? 0}
                     className="bg-muted aspect-square w-[90px] rounded-md object-cover"
                   />
                 </MotionContainer>

@@ -22,11 +22,15 @@ class ProctorAgent(Agent):
         self._llm = llm_instance
         self._latest_screen_frame = None
         self._room = None
+        self._violation_count = 0
 
     @function_tool()
     async def show_quiz_link(self, context: RunContext) -> str:
         """Display quiz link popup and start monitoring screen share."""
-        await self._session.say("Perfect! I'm setting up your quiz now. You'll see a link appear on your screen.", allow_interruptions=False)
+        await self._session.say(
+            "Perfect! I'm setting up your quiz now. You'll see a link appear on your screen.",
+            allow_interruptions=False
+        )
         
         # Start monitoring
         asyncio.create_task(self._monitor_screen())
@@ -54,15 +58,6 @@ class ProctorAgent(Agent):
                 track.kind == rtc.TrackKind.KIND_VIDEO):
                 self._create_screen_stream(track)
         
-        # Check for existing screen share tracks
-        for participant in self._room.remote_participants.values():
-            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD:
-                for publication in participant.track_publications.values():
-                    if (publication.track and 
-                        publication.track.kind == rtc.TrackKind.KIND_VIDEO and 
-                        publication.source == rtc.TrackSource.SOURCE_SCREENSHARE):
-                        self._create_screen_stream(publication.track)
-
     def _create_screen_stream(self, track: rtc.Track) -> None:
         """Buffer latest screen share frame."""
         stream = rtc.VideoStream(track)
@@ -83,11 +78,23 @@ class ProctorAgent(Agent):
             chat_ctx = ChatContext()
             chat_ctx.add_message(
                 role="system",
-                content='You are a screen monitor. Look at the screen and return ONLY one of these exact strings - nothing else:\n- If quiz is COMPLETE/FINISHED (final results page), return the final score like "3 out of 4"\n- If student is on Google, phone, or any other tab/app (NOT the quiz), return exactly: "TAB_SWITCH"\n- If student is on the quiz page (even if score visible in progress), return exactly: "ON_QUIZ"\n\nCRITICAL: Return ONLY the exact string. Do not add any explanation, commentary, or other text.'
+                content=(
+                    'You are a screen monitor. Look at the screen and return ONLY one of these exact strings - nothing else:\n'
+                    '- If quiz is COMPLETE/FINISHED (final results page), return the final score like "3 out of 4"\n'
+                    '- If student is on Google, phone, or any other tab/app (NOT the quiz), return exactly: "TAB_SWITCH"\n'
+                    '- If student is on the quiz page (even if score visible in progress), return exactly: "ON_QUIZ"\n\n'
+                    'CRITICAL: Return ONLY the exact string. Do not add any explanation, commentary, or other text.'
+                )
             )
             chat_ctx.add_message(
                 role="user",
-                content=[ImageContent(image=self._latest_screen_frame, inference_width=1024, inference_height=768)]
+                content=[
+                    ImageContent(
+                        image=self._latest_screen_frame,
+                        inference_width=1024,
+                        inference_height=768
+                    )
+                ]
             )
             
             response = ""
@@ -104,11 +111,17 @@ class ProctorAgent(Agent):
                 break
             # Check for tab switch
             elif "TAB_SWITCH" in response:
-                await self._session.say(
-                    "I notice you've switched tabs. Please return to the quiz window to continue your exam.",
-                    allow_interruptions=False,
-                    add_to_chat_ctx=False
-                )
+                self._violation_count += 1
+                
+                if self._violation_count == 1:
+                    message = "I notice you've switched tabs. Please return to the quiz window to continue your exam."
+                elif self._violation_count == 2:
+                    message = "This is your second warning. Please stay on the quiz page to avoid further violations."
+                else:
+                    message = f"Multiple violations detected. This is violation number {self._violation_count}. Your exam may be flagged for review."
+                
+                await self._session.say(message, allow_interruptions=False, add_to_chat_ctx=False)
+                
             # Debug: log all responses to see what LLM is returning
             elif response and response != "ON_QUIZ":
                 print(f"[MONITOR] LLM response: '{response}'")
@@ -129,7 +142,7 @@ async def my_agent(ctx: agents.JobContext):
     
     avatar = anam.AvatarSession(
         persona_config=anam.PersonaConfig(
-            name="Proctor",
+            name="Quiz Proctor",
             avatarId="default",
         ),
     )
@@ -148,7 +161,7 @@ async def my_agent(ctx: agents.JobContext):
     )
     
     await session.generate_reply(
-        instructions="Greet the user and ask them to share their screen to begin."
+        instructions="Greet the user warmly and professionally. Ask them to share their screen so we can begin the exam process."
     )
 
 if __name__ == "__main__":
